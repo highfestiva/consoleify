@@ -412,6 +412,25 @@ void PlayApp::Init()
 	spconfig.user_agent = "consoleify";
 	spconfig.callbacks = &session_callbacks;
 	spconfig.userdata = NULL;
+	static astr puser,ppass,purl;
+	DiskFile f;
+	if (f.Open(_T("proxy_settings.txt"), DiskFile::MODE_TEXT_READ))
+	{
+		astr s;
+		f.ReadLine(s);
+		s = astrutil::Strip(s, " \t\n\r");
+		astrutil::strvec scheme_base = astrutil::Split(s, "://", 1);
+		astr scheme = scheme_base[0];
+		astr base = scheme_base[1];
+		astrutil::strvec user_hostport = astrutil::Split(base, "@", 1);
+		astrutil::strvec user_pass = astrutil::Split(user_hostport[0], ":", 1);
+		puser = user_pass[0];
+		ppass = user_pass[1];
+		purl = scheme + "://" + user_hostport[1];
+	}
+	spconfig.proxy = purl.empty()? NULL : purl.c_str();
+	spconfig.proxy_username = puser.empty()? NULL : puser.c_str();
+	spconfig.proxy_password = ppass.empty()? NULL : ppass.c_str();
 
 	audio_init(&g_audiofifo);
 }
