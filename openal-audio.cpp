@@ -19,6 +19,9 @@ extern "C" ALC_API void ALC_APIENTRY alc_init(void);	// Not intended for this ty
 #define AL_CHECK()	deb_assert(alGetError() == AL_NO_ERROR)
 
 
+extern float gVolume;
+
+
 static void error_exit(const char *msg)
 {
 	puts(msg);
@@ -60,7 +63,7 @@ static void audio_start(void *aux)
 	context = alcCreateContext(device, attributes);
 	alcMakeContextCurrent(context);
 	AL_CHECK();
-	alListenerf(AL_GAIN, 1.0f);
+	alListenerf(AL_GAIN, gVolume);
 	AL_CHECK();
 	//alDistanceModel(AL_NONE);
 	AL_CHECK();

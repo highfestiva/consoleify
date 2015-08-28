@@ -67,6 +67,7 @@ static bool isplaying = false;
 static bool hurry = false;
 UdpSocket* command_socket = 0;
 SocketAddress last_remote_address;
+float gVolume = 1.0f;
 
 
 static void print(const astr& msg)
@@ -431,6 +432,16 @@ void PlayApp::Init()
 	spconfig.proxy = purl.empty()? NULL : purl.c_str();
 	spconfig.proxy_username = puser.empty()? NULL : puser.c_str();
 	spconfig.proxy_password = ppass.empty()? NULL : ppass.c_str();
+
+	const char* lVolume = getenv("CON_VOLUME");
+	if (lVolume)
+	{
+		double lValue;
+		if (astrutil::StringToDouble(astr(lVolume), lValue))
+		{
+			gVolume = (float)lValue;
+		}
+	}
 
 	audio_init(&g_audiofifo);
 }
