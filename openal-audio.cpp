@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include "audio.h"
 
-#define NUM_BUFFERS 3
+#define NUM_BUFFERS 15
 
 
 #ifdef LEPRA_WINDOWS
@@ -65,8 +65,6 @@ static void audio_start(void *aux)
 	AL_CHECK();
 	alListenerf(AL_GAIN, gVolume);
 	AL_CHECK();
-	//alDistanceModel(AL_NONE);
-	AL_CHECK();
 	const float lPos[3] = {0, 0, 0};
 	const float lVel[3] = {0, 0, 0};
 	const float lDirection[3+3] = {0, 1, 0, 0, 0, 1};	// Forward along Y, up along Z.
@@ -76,17 +74,23 @@ static void audio_start(void *aux)
 	AL_CHECK();
 	::alListenerfv(AL_ORIENTATION, lDirection);
 	AL_CHECK();
+	alDistanceModel(AL_NONE);
+	AL_CHECK();
+	alDopplerFactor(0);
+	AL_CHECK();
 	alGenBuffers((ALsizei)NUM_BUFFERS, buffers);
 	AL_CHECK();
 	alGenSources(1, &source);
 	AL_CHECK();
 	alSourcef(source, AL_GAIN, 1.0);
 	AL_CHECK();
+	alSourcei(source, AL_SOURCE_RELATIVE, AL_TRUE);
+	AL_CHECK();
 
 	/* First prebuffer some audio */
-	queue_buffer(source, af, buffers[0]);
-	queue_buffer(source, af, buffers[1]);
-	queue_buffer(source, af, buffers[2]);
+	for (int i = 0; i < NUM_BUFFERS; ++i) {
+		queue_buffer(source, af, buffers[i]);
+	}
 	for (;;) {
 		alSourcePlay(source);
 		AL_CHECK();
@@ -108,9 +112,9 @@ static void audio_start(void *aux)
 			
 			/* and queue some more audio */
 			afd = audio_get(af);
-			alGetBufferi(buffers[frame % 3], AL_FREQUENCY, &rate);
+			alGetBufferi(buffers[frame % NUM_BUFFERS], AL_FREQUENCY, &rate);
 			AL_CHECK();
-			alGetBufferi(buffers[frame % 3], AL_CHANNELS, &channels);
+			alGetBufferi(buffers[frame % NUM_BUFFERS], AL_CHANNELS, &channels);
 			AL_CHECK();
 			if (afd->rate != rate || afd->channels != channels) {
 				printf("rate or channel count changed, resetting\n");
@@ -118,16 +122,16 @@ static void audio_start(void *aux)
 				break;
 			}
 			/* Remove old audio from the queue.. */
-			alSourceUnqueueBuffers(source, 1, &buffers[frame % 3]);
+			alSourceUnqueueBuffers(source, 1, &buffers[frame % NUM_BUFFERS]);
 			AL_CHECK();
-			alBufferData(buffers[frame % 3], 
+			alBufferData(buffers[frame % NUM_BUFFERS], 
 						 afd->channels == 1 ? AL_FORMAT_MONO16 : AL_FORMAT_STEREO16, 
 						 afd->samples, 
 						 afd->nsamples * afd->channels * sizeof(short), 
 						 afd->rate);
 			AL_CHECK();
 			free(afd);
-			alSourceQueueBuffers(source, 1, &buffers[frame % 3]);
+			alSourceQueueBuffers(source, 1, &buffers[frame % NUM_BUFFERS]);
 			AL_CHECK();
 			
 			if ((error = alcGetError(device)) != AL_NO_ERROR) {
@@ -148,8 +152,9 @@ static void audio_start(void *aux)
 					 afd->rate);
 
 		alSourceQueueBuffers(source, 1, &buffers[0]);
-		queue_buffer(source, af, buffers[1]);
-		queue_buffer(source, af, buffers[2]);
+		for (int i = 1; i < NUM_BUFFERS; ++i) {
+			queue_buffer(source, af, buffers[i]);
+		}
 		frame = 0;
 	}
 }
