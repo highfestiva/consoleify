@@ -187,7 +187,7 @@ static void search_artist(const astr& name)
 
 static void search_toplist()
 {
-	sp_toplistbrowse_create(g_sess, SP_TOPLIST_TYPE_TRACKS, SP_TOPLIST_REGION_EVERYWHERE, NULL, toplistbrowse_complete, NULL);
+	sp_toplistbrowse_create(g_sess, SP_TOPLIST_TYPE_TRACKS, (sp_toplistregion)SP_TOPLIST_REGION('S','E'), NULL, toplistbrowse_complete, NULL);
 }
 
 /**
@@ -546,6 +546,8 @@ bool PlayApp::HandleCmd(const astr& cmd)
 
 int PlayApp::Run()
 {
+	SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
+
 	sp_session *sp;
 	sp_error err;
 	int next_timeout = 0;
@@ -598,6 +600,7 @@ int PlayApp::Run()
 		} while (next_timeout == 0);
 		const int maxt = hurry? 100 : 10000;
 		next_timeout = (next_timeout>maxt)? maxt : next_timeout;
+		next_timeout /= 2;
 
 		g_notify_mutex.Acquire();
 	}
