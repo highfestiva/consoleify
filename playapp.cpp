@@ -550,7 +550,7 @@ int PlayApp::Run()
 
 	sp_session *sp;
 	sp_error err;
-	int next_timeout = 0;
+	int next_timeout = 1;
 	const astr username = astrutil::Encode(SystemManager::GetArgumentVector()[1]);
 	const astr password = astrutil::Encode(SystemManager::GetArgumentVector()[2]);
 
@@ -566,17 +566,7 @@ int PlayApp::Run()
 	g_notify_mutex.Acquire();
 
 	for (;;) {
-		if (next_timeout == 0)
-		{
-			while(!g_notify_do)
-			{
-				g_notify_cond.Wait();
-			}
-		}
-		else
-		{
-			g_notify_cond.Wait(next_timeout/1000.0);
-		}
+		g_notify_cond.Wait(next_timeout/1000.0);
 
 		g_notify_do = 0;
 		g_notify_mutex.Release();
