@@ -546,7 +546,9 @@ bool PlayApp::HandleCmd(const astr& cmd)
 
 int PlayApp::Run()
 {
+#ifdef LEPRA_WINDOWS
 	SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
+#endif // LEPRA_WINDOWS
 
 	sp_session *sp;
 	sp_error err;

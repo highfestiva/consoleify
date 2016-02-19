@@ -4,7 +4,7 @@ CPP_COMPILER = g++
 
 CFLAGS = -O3 -std=c++11 -fPIC -D_POSIX_PTHREAD_SEMANTICS -I../../pd/Lepra/Include -I../../pd/ThirdParty/openal-soft-1.10.622/OpenAL32/Include -I../../pd/ThirdParty/openal-soft-1.10.622/include -DPOSIX -D_XOPEN_SOURCE=600 -D_CONSOLE -DPNG_NO_ASSEMBLER_CODE -DdSingle -DdTLS_ENABLED=1 -DHAVE_CONFIG_H=1 -DLEPRA_WITHOUT_FMOD
 CPPFLAGS = $(CFLAGS)  -Wall -Wno-unknown-pragmas
-LIBS = -lLepra -lThirdParty -lOpenAL -lspotify -lpthread -ldl -lrt -L../../pd/ThirdParty -L../../pd/ThirdParty/openal-soft-1.10.622 -L../../pd/Lepra -L. -Wl,-rpath -Wl,.
+LIBS = -lLepra -lThirdParty -lopenal -lspotify -lpthread -ldl -lrt -L../../pd/ThirdParty -L../../pd/Lepra -L. -Wl,-rpath -Wl,.
 
 SRCS=	\
 audio.cpp	\
