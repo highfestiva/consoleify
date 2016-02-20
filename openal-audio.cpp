@@ -1,4 +1,5 @@
 #include <LepraAssert.h>
+#include <DiskFile.h>
 #include <AL/al.h>
 #include <AL/alc.h>
 #include <errno.h>
@@ -6,6 +7,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "audio.h"
+
+using namespace Lepra;
 
 #define NUM_BUFFERS 15
 
@@ -20,6 +23,9 @@ extern "C" ALC_API void ALC_APIENTRY alc_init(void);	// Not intended for this ty
 
 
 extern float gVolume;
+DiskFile cache_file;
+int track_rate = 0;
+int track_channels = 1;
 
 
 static void error_exit(const char *msg)
@@ -28,9 +34,83 @@ static void error_exit(const char *msg)
 	exit(1);
 }
 
+void WavCreateHeader()
+{
+	cache_file.WriteRaw("RIFF", 4);
+	cache_file.Write((int32)0);	// Header 1 size.
+	cache_file.WriteRaw("WAVE", 4);
+	cache_file.WriteRaw("fmt ", 4);
+	cache_file.Write((int32)16);	// Rest of header 2 size.
+	cache_file.Write((int16)1);	// PCM
+	cache_file.Write((int16)track_channels);
+	cache_file.Write(track_rate);
+	cache_file.Write((int32)(track_rate*track_channels*sizeof(short)));
+	cache_file.Write((int16)(track_channels*sizeof(short)));
+	cache_file.Write((int16)(sizeof(short)*8));
+	cache_file.WriteRaw("data", 4);
+	cache_file.Write((int32)0);	// Data size.
+}
+
+void WavCompleteHeader()
+{
+	const int32 complete_size = (int32)cache_file.Tell();
+	int32 data_size = complete_size - 44;
+	data_size -= data_size % (track_channels*sizeof(short));
+	cache_file.SeekSet(4);
+	cache_file.Write(36+data_size);
+	cache_file.SeekSet(40);
+	cache_file.Write(data_size);
+}
+
+static audio_fifo_data_t * audio_get_cache(audio_fifo_t *af)
+{
+	for (;;) {
+		audio_fifo_data_t *afd = audio_get(af);
+		if (!afd->fname) {
+			if (track_rate == 0) {
+				track_rate = afd->rate;
+				track_channels = afd->channels;
+				WavCreateHeader();
+			}
+			if (cache_file.IsOpen()) {
+				cache_file.WriteData(afd->samples, afd->nsamples * afd->channels * sizeof(short));
+			}
+			return afd;
+		} else {
+			if (strcmp("<", afd->fname) == 0) {
+				const str path_name = cache_file.GetFullName();
+				cache_file.Close();
+				if (!path_name.empty()) {
+					DiskFile::Delete(path_name);
+				}
+				track_rate = 0;
+			} else if (strcmp(">", afd->fname) == 0) {
+				if (cache_file.IsOpen()) {
+					WavCompleteHeader();
+					str fname = cache_file.GetFullName();
+					cache_file.Close();
+					DiskFile::Rename(fname, strutil::ReplaceAll(fname, _T(".wavy"), _T(".wav")));
+				}
+				track_rate = 0;
+			} else {
+				cache_file.Close();
+				track_rate = 0;
+				str fname = strutil::Encode(afd->fname);
+				fname = strutil::ReplaceAll(fname, _T("/"), _T("_"));
+				fname = strutil::ReplaceAll(fname, _T("\\"), _T("_"));
+				fname = strutil::ReplaceAll(fname, _T(":"), _T("_"));
+				fname = strutil::ReplaceAll(fname, _T("cache_"), _T("cache/"));
+				cache_file.Open(fname, DiskFile::MODE_WRITE, true, Endian::TYPE_LITTLE_ENDIAN);
+			}
+			free(afd->fname);
+			free(afd);
+		}
+	}
+}
+
 static int queue_buffer(ALuint source, audio_fifo_t *af, ALuint buffer)
 {
-	audio_fifo_data_t *afd = audio_get(af);
+	audio_fifo_data_t *afd = audio_get_cache(af);
 	alBufferData(buffer, 
 		afd->channels == 1 ? AL_FORMAT_MONO16 : AL_FORMAT_STEREO16, 
 		afd->samples, 
@@ -111,7 +191,7 @@ static void audio_start(void *aux)
 			} while (processed == 0);
 			
 			/* and queue some more audio */
-			afd = audio_get(af);
+			afd = audio_get_cache(af);
 			alGetBufferi(buffers[frame % NUM_BUFFERS], AL_FREQUENCY, &rate);
 			AL_CHECK();
 			alGetBufferi(buffers[frame % NUM_BUFFERS], AL_CHANNELS, &channels);

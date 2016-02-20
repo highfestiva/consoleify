@@ -94,14 +94,34 @@ static void SP_CALLCONV logged_in(sp_session *sess, sp_error error)
 }
 
 
+static void start_playing(const astr& song_link)
+{
+	const astr name = sp_track_name(g_currenttrack);
+	astrutil::strvec artists;
+	for (int j = 0; j < sp_track_num_artists(g_currenttrack); ++j) {
+		sp_artist* art = sp_track_artist(g_currenttrack, j);
+		artists.push_back(sp_artist_name(art));
+	}
+	const astr artists_str = astrutil::Join(artists, "+");
+	print(astrutil::Format("Playing \"%s\" by %s # %s\n", name.c_str(), artists_str.c_str(), song_link.c_str()));
+
+	audio_put_fname(&g_audiofifo, ("cache/" + artists_str + "-" + name + ".wavy").c_str());
+}
+
+
 static void play_song(const astr& song_link)
 {
 	sp_link* link = sp_link_create_from_string(song_link.c_str());
+	if (!link)
+	{
+		print(astrutil::Format("Unable to play track %s (should be in spotify:track:xxx format)!", song_link.c_str()));
+		return;
+	}
         sp_track_add_ref(g_currenttrack = sp_link_as_track(link));
 	sp_link_release(link);
 	sp_error e = sp_track_error(g_currenttrack);
 	if (e == SP_ERROR_OK) {
-		print(astrutil::Format("Playing \"%s\"...\n", sp_track_name(g_currenttrack)));
+		start_playing(song_link);
 		sp_session_player_load(g_sess, g_currenttrack);
 		sp_session_player_play(g_sess, 1);
 		isplaying = true;
@@ -221,29 +241,23 @@ static int SP_CALLCONV music_delivery(sp_session *sess, const sp_audioformat *fo
 	if (num_frames == 0)
 		return 0; // Audio discontinuity, do nothing
 
-	af->mutex.Acquire();
-
-	/* Buffer one second of audio */
-	if (af->qlen > format->sample_rate) {
-		af->mutex.Release();
+	// Buffer N seconds of audio, or return later.
+	const float N = 1;
+	if (af->qlen > format->sample_rate * N) {
 		return 0;
 	}
 
 	s = num_frames * sizeof(int16_t) * format->channels;
 
 	afd = (audio_fifo_data_t*)malloc(sizeof(*afd) + s);
+	afd->fname = 0;
 	memcpy(afd->samples, frames, s);
 
 	afd->nsamples = num_frames;
 
 	afd->rate = format->sample_rate;
 	afd->channels = format->channels;
-
-	af->q.push_back(afd);
-	af->qlen += num_frames;
-
-	af->cond->Signal();
-	af->mutex.Release();
+	audio_put(af, afd, num_frames);
 
 	return num_frames;
 }
@@ -277,7 +291,7 @@ static void SP_CALLCONV metadata_updated(sp_session *sess)
 	if (isplaying || !g_currenttrack || sp_track_error(g_currenttrack) != SP_ERROR_OK)
 		return;
 
-	print(astrutil::Format("Playing \"%s\"...\n", sp_track_name(g_currenttrack)));
+	start_playing("?");
 
 	sp_session_player_load(g_sess, g_currenttrack);
 	sp_session_player_play(g_sess, 1);
@@ -328,21 +342,27 @@ static sp_session_config spconfig;
  *
  * Called from the main loop when the music_delivery() callback has set g_playback_done.
  */
-static void SP_CALLCONV track_ended(void)
+static void SP_CALLCONV track_ended(bool save)
 {
+	audio_put_fname(&g_audiofifo, save? ">" : "<");
 	if (g_currenttrack)
 	{
 		sp_track_release(g_currenttrack);
 		g_currenttrack = NULL;
 	}
 	sp_session_player_unload(g_sess);
+	if (save) {
+		while (!audio_is_empty(&g_audiofifo)) {
+			Thread::Sleep(0.1);
+		}
+	}
 	isplaying = false;
 	hurry = false;
 }
 
 static void SP_CALLCONV stop(void)
 {
-	track_ended();
+	track_ended(false);
 	audio_fifo_flush(&g_audiofifo);
 	print("Stopped.\n");
 }
@@ -574,7 +594,7 @@ int PlayApp::Run()
 		g_notify_mutex.Release();
 
 		if (g_playback_done) {
-			track_ended();
+			track_ended(true);
 			g_playback_done = 0;
 		}
 

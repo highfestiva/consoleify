@@ -42,31 +42,65 @@ audio_fifo_t::~audio_fifo_t()
 }
 
 
+void audio_put_fname(audio_fifo_t *af, const char* s) {
+	audio_fifo_data_t* afd = (audio_fifo_data_t*)malloc(sizeof(*afd));
+	afd->fname = (char*)malloc(strlen(s)+1);
+	afd->nsamples = 0;
+	strcpy(afd->fname, s);
+	audio_put(af, afd, 0);
+}
+
+void audio_put(audio_fifo_t *af, audio_fifo_data_t* afd, int num_frames)
+{
+	af->mutex.Acquire();
+
+	af->q.push_back(afd);
+	af->qlen += num_frames;
+
+	af->cond->Signal();
+	af->mutex.Release();
+}
+
 audio_fifo_data_t* audio_get(audio_fifo_t *af)
 {
-    audio_fifo_data_t *afd;
-    af->mutex.Acquire();
+	audio_fifo_data_t *afd;
+	af->mutex.Acquire();
   
-    while (af->q.empty())
-	af->cond->Wait();
+	while (af->q.empty())
+		af->cond->Wait();
 
-    afd = af->q.front();
-    af->q.pop_front();
-    af->qlen -= afd->nsamples;
+	afd = af->q.front();
+	af->q.pop_front();
+	af->qlen -= afd->nsamples;
   
-    af->mutex.Release();
-    return afd;
+	af->mutex.Release();
+	return afd;
+}
+
+bool audio_is_empty(audio_fifo_t *af) {
+	af->mutex.Acquire();
+	const bool empty = af->q.empty();
+	af->mutex.Release();
+	return empty;
 }
 
 void audio_fifo_flush(audio_fifo_t *af)
 {
-    audio_fifo_data_t *afd;
-    af->mutex.Acquire();
-    while (!af->q.empty()) {
-	afd = af->q.front();
-	af->q.pop_front();
-	free(afd);
-    }
-    af->qlen = 0;
-    af->mutex.Release();
+	audio_fifo_data_t* afd;
+	af->mutex.Acquire();
+	while (!af->q.empty()) {
+		afd = af->q.front();
+		af->q.pop_front();
+		if (afd->fname) {
+			free(afd->fname);
+			afd->fname = 0;
+		}
+		free(afd);
+	}
+	af->qlen = 0;
+
+	// Delete any track caching in progress.
+	audio_put_fname(af, "<");
+
+	af->mutex.Release();
 }
